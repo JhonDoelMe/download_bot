@@ -1,9 +1,6 @@
 import asyncio
 import re
-import sqlite3
 import os
-from datetime import datetime, timedelta
-
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -11,34 +8,11 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.filters import CommandStart
 
 from config import BOT_TOKEN, MAX_DOWNLOADS_PER_USER
-from utils import detect_platform, download_video, get_user_locale, cleanup_message_later
+from utils import detect_platform, download_video, cleanup_message_later
+# Импортируем новые асинхронные функции для работы с БД из database.py
+from database import check_and_update_limit, update_user_language, get_user_locale as db_get_user_locale
 
-# --- Логика базы данных (добавляем поле language_code) ---
-DB_NAME = 'bot_users.db'
-
-def setup_database():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    # ИЗМЕНЕНИЕ: Добавляем столбец для языка пользователя
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN language_code TEXT")
-    except sqlite3.OperationalError:
-        # Такая колонка уже существует, ничего не делаем
-        pass
-
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            download_count INTEGER DEFAULT 0,
-            last_reset TEXT,
-            language_code TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-# --- Новые тексты и клавиатуры ---
-# Словарь с новыми, подробными приветствиями
+# --- Тексты и клавиатуры ---
 GREETING_TEXTS = {
     "uk": (
         "<b>Ласкаво просимо!</b>\n\n"
@@ -65,9 +39,7 @@ GREETING_TEXTS = {
         "🔹 <b>Auto-deletion:</b> Videos sent by me will be automatically deleted after 5 minutes to save space."
     )
 }
-# Инициализация базы данных
 
-# Клавиатура для выбора языка
 language_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [
         InlineKeyboardButton(text="🇺🇦 Українська", callback_data="lang_uk"),
@@ -76,92 +48,76 @@ language_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     ]
 ])
 
-
-def get_user_db(user_id: int):
-    """Вспомогательная функция для получения данных пользователя из БД."""
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    return cursor.fetchone()
-
-# ... остальная часть файла ...
-# (check_and_update_limit, bot, dp, keyboard, warning_texts)
-
-def check_and_update_limit(user_id: int) -> bool:
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    now = datetime.utcnow()
-    
-    if user:
-        last_reset = datetime.fromisoformat(user["last_reset"])
-        if now - last_reset > timedelta(days=1):
-            cursor.execute("UPDATE users SET download_count = 1, last_reset = ? WHERE user_id = ?", (now.isoformat(), user_id))
-        elif user["download_count"] >= MAX_DOWNLOADS_PER_USER:
-            conn.close()
-            return False
-        else:
-            cursor.execute("UPDATE users SET download_count = download_count + 1 WHERE user_id = ?", (user_id,))
-    else:
-        # При первом контакте создаем пользователя без языка
-        cursor.execute("INSERT INTO users (user_id, download_count, last_reset) VALUES (?, 1, ?)", (user_id, now.isoformat()))
-
-    conn.commit()
-    conn.close()
-    return True
-
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher()
 keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔁 Скачати ще", callback_data="download_more")]])
+
 warning_texts = {
     "uk": "⚠️ <b>Увага:</b> відео буде автоматично видалено через 5 хвилин.\nЗбережіть його заздалегідь.",
-    "pl": "⚠️ <b>Uwaga:</b> film zostanie automatycznie usunięty za 5 minut.\nPobierz go wcześniej."
+    "pl": "⚠️ <b>Uwaga:</b> film zostanie automatycznie usunięty za 5 minut.\nPobierz go wcześniej.",
+    "en": "⚠️ <b>Attention:</b> the video will be automatically deleted in 5 minutes.\nPlease save it beforehand."
 }
 
-# ИЗМЕНЕНИЕ: /start теперь предлагает выбор языка
+
+# --- Логика бота ---
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher()
+
+
+async def get_user_locale(message: Message | CallbackQuery) -> str:
+    """
+    Определяет язык пользователя: сначала из нашей БД, 
+    затем по настройкам Telegram, по умолчанию — английский.
+    """
+    user_lang = await db_get_user_locale(message.from_user.id)
+    if user_lang:
+        return user_lang
+    
+    lang_from_tg = message.from_user.language_code
+    if lang_from_tg:
+        if lang_from_tg.startswith("pl"):
+            return "pl"
+        if lang_from_tg.startswith("uk"):
+            return "uk"
+    return "en"
+
+
 @dp.message(CommandStart())
 async def start(message: Message):
-    await message.answer("Please select your language / Будь ласка, оберіть мову / Proszę wybrać język:", reply_markup=language_keyboard)
+    """Отправляет приветствие с выбором языка."""
+    await message.answer(
+        "Please select your language / Будь ласка, оберіть мову / Proszę wybrać język:", 
+        reply_markup=language_keyboard
+    )
 
-# НОВЫЙ ОБРАБОТЧИК: Реагирует на нажатие кнопок выбора языка
 @dp.callback_query(F.data.startswith("lang_"))
 async def select_language(callback: CallbackQuery):
+    """Обрабатывает выбор языка, сохраняет его и отправляет подробное приветствие."""
     lang_code = callback.data.split("_")[1]
-    user_id = callback.from_user.id
+    await update_user_language(callback.from_user.id, lang_code)
     
-    # Сохраняем выбор языка в БД
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    # Используем INSERT OR IGNORE и UPDATE для атомарности
-    cursor.execute("INSERT OR IGNORE INTO users (user_id, language_code) VALUES (?, ?)", (user_id, lang_code))
-    cursor.execute("UPDATE users SET language_code = ? WHERE user_id = ?", (lang_code, user_id))
-    conn.commit()
-    conn.close()
-
-    # Отправляем новое приветствие
     text = GREETING_TEXTS.get(lang_code, GREETING_TEXTS["en"]).format(limit=MAX_DOWNLOADS_PER_USER)
     
-    # Редактируем исходное сообщение, чтобы убрать кнопки
     await callback.message.edit_text(text, parse_mode=ParseMode.HTML)
-    await callback.answer() # Подтверждаем получение колбэка
+    await callback.answer()
 
 
 @dp.message(F.text.regexp(r'(https?://\S+)'))
 async def handle_video_request(message: Message):
-    # Логика этой функции остается прежней, но теперь get_user_locale будет работать по-новому
+    """Основной обработчик ссылок на видео."""
     user_id = message.from_user.id
-    locale = await get_user_locale(message) # get_user_locale теперь асинхронная
+    locale = await get_user_locale(message)
 
-    if not check_and_update_limit(user_id):
-        text = {"uk": f"🚫 Ви досягли денного ліміту завантажень ({MAX_DOWNLOADS_PER_USER}).", "pl": f"🚫 Osiągnięto dzienny limit pobierania ({MAX_DOWNLOADS_PER_USER})."}.get(locale, f"🚫 Daily download limit reached ({MAX_DOWNLOADS_PER_USER}).")
-        await message.reply(text)
+    if not await check_and_update_limit(user_id):
+        limit_exceeded_texts = {
+            "uk": f"🚫 Ви досягли денного ліміту завантажень ({MAX_DOWNLOADS_PER_USER}).",
+            "pl": f"🚫 Osiągnięto dzienny limit pobierania ({MAX_DOWNLOADS_PER_USER}).",
+            "en": f"🚫 Daily download limit reached ({MAX_DOWNLOADS_PER_USER})."
+        }
+        await message.reply(limit_exceeded_texts.get(locale))
         return
 
     url_match = re.search(r'(https?://\S+)', message.text)
-    if not url_match: return
+    if not url_match: 
+        return
 
     url = url_match.group(1)
     platform = detect_platform(url)
@@ -172,7 +128,10 @@ async def handle_video_request(message: Message):
         
         if video_path:
             try:
-                sent_video = await message.answer_video(video=FSInputFile(path=video_path), reply_markup=keyboard)
+                sent_video = await message.answer_video(
+                    video=FSInputFile(path=video_path), 
+                    reply_markup=keyboard
+                )
                 await message.answer(warning_texts.get(locale))
                 asyncio.create_task(cleanup_message_later(bot, sent_video.chat.id, sent_video.message_id, 300))
             except Exception as e:
@@ -190,7 +149,12 @@ async def handle_video_request(message: Message):
 
 @dp.callback_query(F.data == "download_more")
 async def handle_repeat(callback_query: CallbackQuery):
-    locale = await get_user_locale(callback_query) # get_user_locale теперь асинхронная
-    text = {"uk": "🔁 Надішліть нове посилання для завантаження.", "pl": "🔁 Wyślij nowy link do pobrania."}.get(locale)
-    await callback_query.message.answer(text)
+    """Обрабатывает кнопку 'Скачати ще'."""
+    locale = await get_user_locale(callback_query)
+    repeat_texts = {
+        "uk": "🔁 Надішліть нове посилання для завантаження.",
+        "pl": "🔁 Wyślij nowy link do pobrania.",
+        "en": "🔁 Send a new link to download."
+    }
+    await callback_query.message.answer(repeat_texts.get(locale))
     await callback_query.answer()

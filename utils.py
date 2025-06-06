@@ -4,13 +4,9 @@ import tempfile
 import re
 import yt_dlp
 import httpx
-import sqlite3 # Добавляем импорт sqlite3
-from aiogram.types import Message, CallbackQuery
 from aiogram import Bot
 
 from config import COOKIE_FILE_PATH, RAPIDAPI_KEY
-
-DB_NAME = 'bot_users.db' # Определяем имя БД здесь тоже
 
 SUPPORTED_PATTERNS = {
     r'(?:https?:\/\/)?(?:www\.)?tiktok\.com': 'tiktok',
@@ -19,12 +15,14 @@ SUPPORTED_PATTERNS = {
 }
 
 def detect_platform(url: str) -> str | None:
+    """Определяет платформу по URL с помощью регулярных выражений."""
     for pattern, platform in SUPPORTED_PATTERNS.items():
         if re.search(pattern, url):
             return platform
     return None
 
 async def run_yt_dlp(url: str, platform: str) -> str | None:
+    """Общая функция для запуска yt-dlp с поддержкой cookies для Instagram."""
     temp_dir = tempfile.mkdtemp()
     output_path = os.path.join(temp_dir, f"{os.urandom(8).hex()}.%(ext)s")
     
@@ -48,6 +46,7 @@ async def run_yt_dlp(url: str, platform: str) -> str | None:
         return None
 
 async def download_from_tiktok_api(url: str) -> str | None:
+    """Скачивает видео из TikTok, используя внешний API."""
     api_url = "https://tiktok-download-without-watermark.p.rapidapi.com/analysis"
     headers = {
         "x-rapidapi-host": "tiktok-download-without-watermark.p.rapidapi.com",
@@ -85,6 +84,7 @@ async def download_from_tiktok_api(url: str) -> str | None:
         return None
 
 async def download_video(url: str, platform: str) -> str | None:
+    """Главная функция-диспетчер для скачивания видео."""
     try:
         if platform == "youtube" or platform == "instagram":
             return await run_yt_dlp(url, platform)
@@ -96,29 +96,8 @@ async def download_video(url: str, platform: str) -> str | None:
         print(f"Ошибка в download_video: {e}")
         return None
 
-# ИЗМЕНЕНИЕ: Функция теперь асинхронная и лезет в БД
-async def get_user_locale(message: Message | CallbackQuery) -> str:
-    """Определяет язык пользователя, сначала проверяя БД, потом клиент Telegram."""
-    user_id = message.from_user.id
-    
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT language_code FROM users WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-    conn.close()
-
-    if result and result[0]:
-        return result[0]
-    
-    # Если в БД нет, определяем по клиенту
-    lang = message.from_user.language_code
-    if lang.startswith("pl"):
-        return "pl"
-    if lang.startswith("uk"):
-        return "uk"
-    return "en" # Английский как язык по умолчанию
-
 async def cleanup_message_later(bot: Bot, chat_id: int, message_id: int, delay: int):
+    """Удаляет сообщение через указанное время."""
     await asyncio.sleep(delay)
     try:
         await bot.delete_message(chat_id, message_id)
