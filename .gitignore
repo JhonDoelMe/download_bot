@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Byte-compiled / optimized / DLL files
+*.egg-info/
+*.egg
+*.log
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# VS Code & IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.*
+
+# Cache (локальное хранилище видео)
+cache/
+*.mp4
+
+# Pytest cache
+.pytest_cache/
+
+# Uvicorn & FastAPI logs
+*.db
+*.sqlite
+*.log
+*.pid
+*.bat
+
+# Build artifacts
+dist/
+build/
+
+# Zip, backup & misc
+*.zip
+*.bak
+*.old
+# Coverage reports
+*.cover
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# PyInstaller
+*.spec
+# Pyre type checker
+.pyre/
+# MyPy
+.mypy_cache/
+# Sphinx documentation
+docs/_build/
+# Pytest HTML reports
+*.html
