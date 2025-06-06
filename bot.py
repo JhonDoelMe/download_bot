@@ -45,26 +45,27 @@ GREETING_TEXTS = {
         "Я допоможу вам завантажити відео з TikTok, Instagram та YouTube без водяних знаків.\n\n"
         "Просто надішліть мені посилання на відео.\n\n"
         "ℹ️ <b>Важлива інформація:</b>\n"
-        "🔹 **Ліміт:** Ви можете завантажити до {limit} відео на добу.\n"
-        "🔹 **Автовидалення:** Надіслані мною відео будуть автоматично видалені через 5 хвилин для економії місця."
+        "🔹 <b>Ліміт:</b> Ви можете завантажити до {limit} відео на добу.\n"
+        "🔹 <b>Автовидалення:</b> Надіслані мною відео будуть автоматично видалені через 5 хвилин для економії місця."
     ),
     "pl": (
         "<b>Witaj!</b>\n\n"
         "Pomogę Ci pobrać filmy z TikToka, Instagrama i YouTube bez znaków wodnych.\n\n"
         "Po prostu wyślij mi link do filmu.\n\n"
         "ℹ️ <b>Ważne informacje:</b>\n"
-        "🔹 **Limit:** Możesz pobrać do {limit} filmów dziennie.\n"
-        "🔹 **Automatyczne usuwanie:** Wysłane przeze mnie filmy zostaną automatycznie usunięte po 5 minutach, aby zaoszczędzić miejsce."
+        "🔹 <b>Limit:</b> Możesz pobrać do {limit} filmów dziennie.\n"
+        "🔹 <b>Automatyczne usuwanie:</b> Wysłane przeze mnie filmy zostaną automatycznie usunięte po 5 minutach, aby zaoszczędzić miejsce."
     ),
     "en": (
         "<b>Welcome!</b>\n\n"
         "I will help you download videos from TikTok, Instagram, and YouTube without watermarks.\n\n"
         "Just send me a link to a video.\n\n"
         "ℹ️ <b>Important Information:</b>\n"
-        "🔹 **Limit:** You can download up to {limit} videos per day.\n"
-        "🔹 **Auto-deletion:** Videos sent by me will be automatically deleted after 5 minutes to save space."
+        "🔹 <b>Limit:</b> You can download up to {limit} videos per day.\n"
+        "🔹 <b>Auto-deletion:</b> Videos sent by me will be automatically deleted after 5 minutes to save space."
     )
 }
+# Инициализация базы данных
 
 # Клавиатура для выбора языка
 language_keyboard = InlineKeyboardMarkup(inline_keyboard=[
