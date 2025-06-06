@@ -4,10 +4,13 @@ import tempfile
 import re
 import yt_dlp
 import httpx
-from aiogram.types import Message
+import sqlite3 # Добавляем импорт sqlite3
+from aiogram.types import Message, CallbackQuery
 from aiogram import Bot
 
 from config import COOKIE_FILE_PATH, RAPIDAPI_KEY
+
+DB_NAME = 'bot_users.db' # Определяем имя БД здесь тоже
 
 SUPPORTED_PATTERNS = {
     r'(?:https?:\/\/)?(?:www\.)?tiktok\.com': 'tiktok',
@@ -93,16 +96,28 @@ async def download_video(url: str, platform: str) -> str | None:
         print(f"Ошибка в download_video: {e}")
         return None
 
-def get_user_locale(message: Message | dict) -> str:
-    lang = (message.from_user.language_code if isinstance(message, Message)
-            else message.get("from", {}).get("language_code", "uk"))
+# ИЗМЕНЕНИЕ: Функция теперь асинхронная и лезет в БД
+async def get_user_locale(message: Message | CallbackQuery) -> str:
+    """Определяет язык пользователя, сначала проверяя БД, потом клиент Telegram."""
+    user_id = message.from_user.id
+    
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT language_code FROM users WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if result and result[0]:
+        return result[0]
+    
+    # Если в БД нет, определяем по клиенту
+    lang = message.from_user.language_code
     if lang.startswith("pl"):
         return "pl"
     if lang.startswith("uk"):
         return "uk"
-    return "uk"
+    return "en" # Английский как язык по умолчанию
 
-# Убедитесь, что функция принимает все 4 аргумента
 async def cleanup_message_later(bot: Bot, chat_id: int, message_id: int, delay: int):
     await asyncio.sleep(delay)
     try:
