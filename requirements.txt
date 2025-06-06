@@ -1,0 +1,17 @@
+# Telegram Bot
+aiogram>=3.0.0
+
+# API Framework
+fastapi
+uvicorn
+
+# HTTP-клиент
+httpx
+
+# Загрузчики видео
+yt-dlp
+pyktok
+playwright
+
+# Для загрузки переменных окружения из .env файла
+python-dotenv
