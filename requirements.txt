@@ -10,8 +10,8 @@ httpx
 
 # Загрузчики видео
 yt-dlp
-pyktok
-playwright
+# pyktok
+# playwright
 
 # Для загрузки переменных окружения из .env файла
 python-dotenv
