@@ -15,3 +15,7 @@ yt-dlp
 
 # Для загрузки переменных окружения из .env файла
 python-dotenv
+
+# Для работы с базой данных PostgreSQL
+sqlalchemy
+asyncpg
