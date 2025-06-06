@@ -4,6 +4,7 @@ import tempfile
 import re
 import yt_dlp
 import httpx
+import logging
 from aiogram import Bot
 
 from config import COOKIE_FILE_PATH, RAPIDAPI_KEY
@@ -15,14 +16,12 @@ SUPPORTED_PATTERNS = {
 }
 
 def detect_platform(url: str) -> str | None:
-    """Определяет платформу по URL с помощью регулярных выражений."""
     for pattern, platform in SUPPORTED_PATTERNS.items():
         if re.search(pattern, url):
             return platform
     return None
 
 async def run_yt_dlp(url: str, platform: str) -> str | None:
-    """Общая функция для запуска yt-dlp с поддержкой cookies для Instagram."""
     temp_dir = tempfile.mkdtemp()
     output_path = os.path.join(temp_dir, f"{os.urandom(8).hex()}.%(ext)s")
     
@@ -35,23 +34,19 @@ async def run_yt_dlp(url: str, platform: str) -> str | None:
 
     if platform == 'instagram' and os.path.exists(COOKIE_FILE_PATH):
         ydl_opts['cookiefile'] = COOKIE_FILE_PATH
-        print(f"Using cookies from {COOKIE_FILE_PATH} for Instagram")
+        logging.info(f"Using cookies from {COOKIE_FILE_PATH} for Instagram")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = await asyncio.to_thread(ydl.extract_info, url, download=True)
             return ydl.prepare_filename(info)
     except Exception as e:
-        print(f"yt-dlp error for {platform}: {e}")
+        logging.error(f"yt-dlp error for {platform}: {e}", exc_info=True)
         return None
 
 async def download_from_tiktok_api(url: str) -> str | None:
-    """Скачивает видео из TikTok, используя внешний API."""
     api_url = "https://tiktok-download-without-watermark.p.rapidapi.com/analysis"
-    headers = {
-        "x-rapidapi-host": "tiktok-download-without-watermark.p.rapidapi.com",
-        "x-rapidapi-key": RAPIDAPI_KEY
-    }
+    headers = {"x-rapidapi-host": "tiktok-download-without-watermark.p.rapidapi.com", "x-rapidapi-key": RAPIDAPI_KEY}
     params = {"url": url, "hd": "0"}
 
     try:
@@ -61,30 +56,26 @@ async def download_from_tiktok_api(url: str) -> str | None:
             data = response.json().get("data", {})
 
             if data.get("images"):
-                print("Обнаружено слайд-шоу TikTok. Этот тип контента не поддерживается для скачивания как видео.")
+                logging.warning("Обнаружено слайд-шоу TikTok. Этот тип контента не поддерживается.")
                 return None
 
             video_download_url = data.get("play_nowm") or data.get("hdplay") or data.get("play")
             
             if not video_download_url or 'mp3' in video_download_url:
-                print(f"Не удалось найти валидную ссылку на видео в ответе API. Ответ: {data}")
+                logging.warning(f"Не удалось найти валидную ссылку на видео в ответе API. Ответ: {data}")
                 return None
 
             video_response = await client.get(video_download_url, follow_redirects=True)
             video_response.raise_for_status()
-
             path = os.path.join(tempfile.gettempdir(), f"{os.urandom(8).hex()}_tiktok.mp4")
             with open(path, "wb") as f:
                 f.write(video_response.content)
-            
             return path
-
-    except (httpx.RequestError, httpx.HTTPStatusError, KeyError) as e:
-        print(f"Ошибка при работе с TikTok API: {e}")
+    except Exception as e:
+        logging.error(f"Ошибка при работе с TikTok API: {e}", exc_info=True)
         return None
 
 async def download_video(url: str, platform: str) -> str | None:
-    """Главная функция-диспетчер для скачивания видео."""
     try:
         if platform == "youtube" or platform == "instagram":
             return await run_yt_dlp(url, platform)
@@ -93,13 +84,12 @@ async def download_video(url: str, platform: str) -> str | None:
         else:
             raise ValueError("Unsupported platform")
     except Exception as e:
-        print(f"Ошибка в download_video: {e}")
+        logging.error(f"Ошибка в download_video: {e}", exc_info=True)
         return None
 
 async def cleanup_message_later(bot: Bot, chat_id: int, message_id: int, delay: int):
-    """Удаляет сообщение через указанное время."""
     await asyncio.sleep(delay)
     try:
         await bot.delete_message(chat_id, message_id)
     except Exception as e:
-        print(f"❌ Не удалось удалить сообщение: {e}")
+        logging.error(f"Не удалось удалить сообщение: {e}", exc_info=True)
