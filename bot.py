@@ -8,7 +8,6 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, FSInputFile
-# ИСПРАВЛЕНИЕ: Добавляем импорт CommandStart
 from aiogram.filters import CommandStart
 
 from config import BOT_TOKEN, MAX_DOWNLOADS_PER_USER
@@ -93,7 +92,8 @@ async def handle_video_request(message: Message):
             try:
                 sent_video = await message.answer_video(video=FSInputFile(path=video_path), reply_markup=keyboard)
                 await message.answer(warning_texts.get(locale))
-                asyncio.create_task(cleanup_message_later(sent_video.chat.id, sent_video.message_id, 300))
+                # ИСПРАВЛЕНИЕ: Убедитесь, что вызов содержит все 4 аргумента
+                asyncio.create_task(cleanup_message_later(bot, sent_video.chat.id, sent_video.message_id, 300))
             except Exception as e:
                 print(f"Ошибка при отправке видео: {e}")
                 await message.answer("❌ Помилка під час відправки відео.")
